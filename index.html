@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Éditeur PDF Express (Couleurs & Drag/Drop)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #181825;
+            color: #cdd6f4;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #89b4fa;
+        }
+
+        #toolbar {
+            background: #313244;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        button,
+        input,
+        select {
+            background: #45475a;
+            color: #fff;
+            border: 1px solid #585b70;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .tool-btn.active {
+            background: #89b4fa;
+            color: #11111b;
+            font-weight: bold;
+        }
+
+        #layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        #canvas-container {
+            position: relative;
+            border: 2px solid #45475a;
+            background: #fff;
+            cursor: crosshair;
+            display: inline-block;
+            user-select: none;
+        }
+
+        /* Style du marqueur déplaçable */
+        .marker {
+            position: absolute;
+            font-weight: bold;
+            transform: translate(-50%, -50%);
+            font-family: sans-serif;
+            white-space: nowrap;
+            cursor: move;
+            padding: 2px 4px;
+            border: 1px dashed transparent;
+            border-radius: 3px;
+        }
+
+        .marker:hover {
+            border-color: #89b4fa;
+            background: rgba(137, 180, 250, 0.2);
+        }
+
+        /* Panneau latéral d'inventaire */
+        #sidebar {
+            flex: 1;
+            min-width: 360px;
+            background: #1e1e2e;
+            border: 1px solid #45475a;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #313244;
+        }
+
+        th {
+            color: #89b4fa;
+            font-weight: 600;
+        }
+
+        .badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .badge-cross {
+            background: #f38ba8;
+            color: #111;
+        }
+
+        .badge-text {
+            background: #a6e3a1;
+            color: #111;
+        }
+
+        .delete-btn {
+            background: transparent;
+            border: none;
+            color: #f38ba8;
+            cursor: pointer;
+            padding: 2px 5px;
+        }
+
+        .inline-edit {
+            background: #11111b;
+            border: 1px solid #585b70;
+            color: #a6e3a1;
+            font-family: monospace;
+            padding: 4px 6px;
+            border-radius: 4px;
+            width: 80%;
+        }
+
+        .color-picker-tbl {
+            padding: 0;
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+
+        #generate-btn {
+            background: #a6e3a1;
+            color: #11111b;
+            font-weight: bold;
+            font-size: 15px;
+            margin-left: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>⚡ Éditeur PDF Express (Couleurs sur-mesure)</h2>
+
+    <div id="toolbar">
+        <input type="file" id="file-input" accept="application/pdf">
+
+        <div>
+            <button id="prev-page" disabled>◀ Page préc.</button>
+            <span id="page-num">Page 0 / 0</span>
+            <button id="next-page" disabled>Page suiv. ▶</button>
+        </div>
+
+        <div style="border-left: 1px solid #585b70; padding-left: 15px; display: flex; gap: 8px; align-items: center;">
+            Mode :
+            <button id="tool-cross" class="tool-btn active">❌ Croix (X)</button>
+            <button id="tool-text" class="tool-btn">📝 Texte</button>
+            <input type="text" id="text-input" placeholder="Texte à insérer..." value="Exemple" style="display:none;">
+
+            <label for="color-input" style="margin-left: 10px; font-size: 13px;">Couleur :</label>
+            <input type="color" id="color-input" value="#000000" title="Choisir la couleur par défaut">
+        </div>
+
+        <button id="reset-btn" style="background: #f38ba8; color: #111;">Réinitialiser tout</button>
+        <button id="generate-btn" disabled>💾 Télécharger le PDF rempli</button>
+    </div>
+
+    <div id="layout">
+        <div id="canvas-container">
+            <canvas id="pdf-canvas"></canvas>
+        </div>
+
+        <!-- INVENTAIRE DE TOUTES LES MODIFS -->
+        <div id="sidebar">
+            <h3 style="margin-top:0; color: #cdd6f4;">📋 Inventaire des modifications</h3>
+            <div style="overflow-x: auto; max-height: 500px; overflow-y: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Type</th>
+                            <th>Valeur</th>
+                            <th>Couleur</th>
+                            <th>(X,Y)</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-list">
+                        <tr>
+                            <td colspan="6" style="color: #6c7086; text-align: center;">Aucune modification apportée
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let pdfDoc = null, currentPage = 1, currentMode = 'cross';
+        let rawPdfArrayBuffer = null;
+        let elements = [];
+        let pageDimensions = {};
+        let draggedElement = null;
+
+        const canvas = document.getElementById('pdf-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+
+        // Helper pour convertir HEX en RGB [0..1] pour pdf-lib
+        function hexToRgbNormalized(hex) {
+            let c = hex.replace('#', '');
+            if (c.length === 3) c = c.split('').map(x => x + x).join('');
+            const num = parseInt(c, 16);
+            return {
+                r: ((num >> 16) & 255) / 255,
+                g: ((num >> 8) & 255) / 255,
+                b: (num & 255) / 255
+            };
+        }
+
+        // Charger le PDF
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            rawPdfArrayBuffer = await file.arrayBuffer();
+            pdfDoc = await pdfjsLib.getDocument({ data: rawPdfArrayBuffer.slice(0) }).promise;
+            currentPage = 1;
+            elements = [];
+            renderPage(currentPage);
+            document.getElementById('generate-btn').disabled = false;
+        });
+
+        // Rendu de la page
+        async function renderPage(num) {
+            const page = await pdfDoc.getPage(num);
+            const unscaledViewport = page.getViewport({ scale: 1.0 });
+            pageDimensions[num] = { w: unscaledViewport.width, h: unscaledViewport.height };
+
+            const viewport = page.getViewport({ scale: 1.3 });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            document.getElementById('page-num').innerText = `Page ${num} / ${pdfDoc.numPages}`;
+            document.getElementById('prev-page').disabled = num <= 1;
+            document.getElementById('next-page').disabled = num >= pdfDoc.numPages;
+
+            refreshMarkers();
+            updateInventoryTable();
+        }
+
+        // Clic pour AJOUTER un élément
+        canvas.addEventListener('click', (e) => {
+            if (!pdfDoc || draggedElement) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            const dims = pageDimensions[currentPage];
+            const pdfX = Math.round((clickX / canvas.width) * dims.w);
+            const pdfY = Math.round((1 - (clickY / canvas.height)) * dims.h);
+
+            const val = currentMode === 'cross' ? 'X' : document.getElementById('text-input').value;
+            const selectedColor = document.getElementById('color-input').value;
+
+            elements.push({
+                id: Date.now(),
+                page: currentPage,
+                type: currentMode,
+                val: val,
+                color: selectedColor,
+                x: pdfX,
+                y: pdfY,
+                screenX: clickX,
+                screenY: clickY
+            });
+
+            refreshMarkers();
+            updateInventoryTable();
+        });
+
+        // Afficher visuellement les éléments
+        function refreshMarkers() {
+            document.querySelectorAll('.marker').forEach(m => m.remove());
+
+            elements.filter(el => el.page === currentPage).forEach(el => {
+                const marker = document.createElement('div');
+                marker.className = 'marker';
+                marker.innerText = el.val;
+                marker.style.left = `${el.screenX}px`;
+                marker.style.top = `${el.screenY}px`;
+                marker.style.color = el.color; // Application de la couleur choisie
+                marker.style.fontSize = el.type === 'cross' ? '18px' : '14px';
+
+                marker.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    draggedElement = el;
+                });
+
+                container.appendChild(marker);
+            });
+        }
+
+        // Deplacement
+        container.addEventListener('mousemove', (e) => {
+            if (!draggedElement) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const moveX = e.clientX - rect.left;
+            const moveY = e.clientY - rect.top;
+
+            const dims = pageDimensions[currentPage];
+
+            draggedElement.screenX = moveX;
+            draggedElement.screenY = moveY;
+            draggedElement.x = Math.round((moveX / canvas.width) * dims.w);
+            draggedElement.y = Math.round((1 - (moveY / canvas.height)) * dims.h);
+
+            refreshMarkers();
+            updateInventoryTable();
+        });
+
+        window.addEventListener('mouseup', () => { draggedElement = null; });
+
+        // Table d'inventaire
+        function updateInventoryTable() {
+            const tbody = document.getElementById('inventory-list');
+            tbody.innerHTML = '';
+
+            if (elements.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="color: #6c7086; text-align: center;">Aucune modification apportée</td></tr>';
+                return;
+            }
+
+            elements.forEach((el) => {
+                const tr = document.createElement('tr');
+                const badgeClass = el.type === 'cross' ? 'badge-cross' : 'badge-text';
+                const typeLabel = el.type === 'cross' ? 'Croix' : 'Texte';
+
+                const valueCell = el.type === 'cross'
+                    ? `<code>X</code>`
+                    : `<input type="text" class="inline-edit" value="${el.val.replace(/"/g, '&quot;')}" oninput="updateElementValue(${el.id}, this.value)">`;
+
+                tr.innerHTML = `
+          <td><strong>P.${el.page}</strong></td>
+          <td><span class="badge ${badgeClass}">${typeLabel}</span></td>
+          <td>${valueCell}</td>
+          <td><input type="color" class="color-picker-tbl" value="${el.color}" onchange="updateElementColor(${el.id}, this.value)"></td>
+          <td><code>${el.x},${el.y}</code></td>
+          <td><button class="delete-btn" onclick="deleteElement(${el.id})">❌</button></td>
+        `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Modifier texte
+        window.updateElementValue = function (id, newVal) {
+            const item = elements.find(el => el.id === id);
+            if (item) {
+                item.val = newVal;
+                refreshMarkers();
+            }
+        };
+
+        // Modifier couleur
+        window.updateElementColor = function (id, newColor) {
+            const item = elements.find(el => el.id === id);
+            if (item) {
+                item.color = newColor;
+                refreshMarkers();
+            }
+        };
+
+        // Supprimer
+        window.deleteElement = function (id) {
+            elements = elements.filter(el => el.id !== id);
+            refreshMarkers();
+            updateInventoryTable();
+        };
+
+        // GENERATION PDF
+        document.getElementById('generate-btn').onclick = async () => {
+            if (!rawPdfArrayBuffer) return;
+
+            const pdfLibDoc = await PDFLib.PDFDocument.load(rawPdfArrayBuffer);
+            const pages = pdfLibDoc.getPages();
+            const font = await pdfLibDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+
+            elements.forEach((el) => {
+                const pageIdx = el.page - 1;
+                const targetPage = pages[pageIdx];
+                const { r, g, b } = hexToRgbNormalized(el.color);
+                const colorObj = PDFLib.rgb(r, g, b);
+
+                if (el.type === 'cross') {
+                    targetPage.drawText('X', { x: el.x, y: el.y, size: 13, font, color: colorObj });
+                } else {
+                    targetPage.drawText(el.val, { x: el.x, y: el.y, size: 11, font, color: colorObj });
+                }
+            });
+
+            const pdfBytes = await pdfLibDoc.save();
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'formulaire_rempli.pdf';
+            link.click();
+        };
+
+        // Outils & Navigation
+        document.getElementById('tool-cross').onclick = function () {
+            currentMode = 'cross';
+            this.classList.add('active');
+            document.getElementById('tool-text').classList.remove('active');
+            document.getElementById('text-input').style.display = 'none';
+        };
+
+        document.getElementById('tool-text').onclick = function () {
+            currentMode = 'text';
+            this.classList.add('active');
+            document.getElementById('tool-cross').classList.remove('active');
+            document.getElementById('text-input').style.display = 'inline-block';
+        };
+
+        document.getElementById('prev-page').onclick = () => { if (currentPage > 1) renderPage(--currentPage); };
+        document.getElementById('next-page').onclick = () => { if (currentPage < pdfDoc.numPages) renderPage(++currentPage); };
+        document.getElementById('reset-btn').onclick = () => { elements = []; refreshMarkers(); updateInventoryTable(); };
+    </script>
+</body>
+
+</html>
