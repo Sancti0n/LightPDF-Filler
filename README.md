@@ -50,6 +50,8 @@ L'application s'articule autour d'une interface sobre et réactive :
 
 Aucune installation, compilation ou dépendance Node.js n'est requise.
 
+---
+
 ### Utilisation locale
 
 1. Cloner le dépôt :
@@ -59,10 +61,13 @@ Aucune installation, compilation ou dépendance Node.js n'est requise.
 
 2. Ouvrir le fichier index.html dans n'importe quel navigateur web moderne (Chrome, Firefox, Edge, Safari).
 
+---
+
 ### Utilisation en ligne (GitHub Pages)
 
-Si GitHub Pages est activé sur le dépôt, l'application est directement utilisable depuis n'importe quel navigateur (ordinateur ou tablette) à l'adresse suivante :
 https://Sancti0n.github.io/LightPDF-Filler/
+
+---
 
 ### Stack technique
 
@@ -71,6 +76,8 @@ https://Sancti0n.github.io/LightPDF-Filler/
     pdf-lib — Manipulation vectorielle et assemblage du fichier PDF final.
 
     HTML5 / CSS3 / JavaScript (Vanilla JS) — Architecture légère sans framework externe pour un chargement instantané.
+
+---
 
 ## Licence
 
